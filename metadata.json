@@ -1,0 +1,5 @@
+{
+  "name": "OmniVault - Secure USDT Cold Wallet",
+  "description": "A client-side, offline-capable multi-chain USDT cold wallet generator. Generates Ethereum, Tron, BSC, and Polygon addresses from a single secure seed phrase using high-entropy randomness.",
+  "requestFramePermissions": []
+}
