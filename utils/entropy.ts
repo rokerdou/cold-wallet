@@ -87,4 +87,5 @@ export class EntropyCollector {
   }
 }
 
-export const entropyCollector = new EntropyCollector();
+// 移除全局单例以防止数据残留
+// 组件内部应创建新实例以确保数据隔离

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { entropyCollector } from '../utils/entropy';
+import React, { useState, useEffect, useRef } from 'react';
+import { EntropyCollector } from '../utils/entropy';
 import { MousePointer2, Lock, ShieldCheck, Download } from 'lucide-react';
 
 interface EntropyCollectorProps {
@@ -9,10 +9,12 @@ interface EntropyCollectorProps {
 
 export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, onRequestImport }) => {
   const [progress, setProgress] = useState(0);
+  // 创建新实例而非使用全局单例，防止数据残留
+  const collectorRef = useRef<EntropyCollector>(new EntropyCollector());
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      const newProgress = entropyCollector.addEvent(e);
+      const newProgress = collectorRef.current.addEvent(e);
       
       setProgress(prev => {
         // Only update if progress increases to avoid unnecessary renders
@@ -27,7 +29,7 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
 
   useEffect(() => {
     if (progress >= 100) {
-      const finalEntropy = entropyCollector.getFinalEntropy();
+      const finalEntropy = collectorRef.current.getFinalEntropy();
       // Small delay to show 100% before transitioning
       setTimeout(() => {
         onComplete(finalEntropy);
