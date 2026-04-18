@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EntropyCollector } from '../utils/entropy';
+import { EntropyCollector as EntropyCollectorClass } from '../utils/entropy';
 import { MousePointer2, Lock, ShieldCheck, Download } from 'lucide-react';
 
 interface EntropyCollectorProps {
@@ -10,7 +10,7 @@ interface EntropyCollectorProps {
 export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, onRequestImport }) => {
   const [progress, setProgress] = useState(0);
   // 创建新实例而非使用全局单例，防止数据残留
-  const collectorRef = useRef<EntropyCollector>(new EntropyCollector());
+  const collectorRef = useRef<EntropyCollectorClass>(new EntropyCollectorClass());
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
