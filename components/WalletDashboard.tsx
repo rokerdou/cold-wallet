@@ -100,7 +100,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({ wallet, onRese
 
       {/* Wallets Grid */}
       <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2 print:text-black">
-        <Wallet className="text-blue-400" /> Multi-Chain USDT Addresses
+        <Wallet className="text-blue-400" /> Multi-Asset Addresses
       </h3>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2 print:gap-4">
@@ -111,7 +111,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({ wallet, onRese
                     <div>
                         <h4 className="font-bold text-white text-lg print:text-black">{w.chain}</h4>
                         <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 print:border-black print:text-black print:bg-transparent">
-                            USDT-{w.symbol}
+                            {w.network}
                         </span>
                     </div>
                     <div className="text-right">
@@ -127,6 +127,18 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({ wallet, onRese
                     </div>
                     
                     <div className="w-full">
+                        <label className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1 block print:text-gray-600">Supported Assets</label>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {w.assets.map((asset) => (
+                                <span
+                                    key={asset}
+                                    className="text-xs font-semibold px-2 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 print:border-gray-300 print:text-black print:bg-white"
+                                >
+                                    {asset}
+                                </span>
+                            ))}
+                        </div>
+
                         <label className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1 block print:text-gray-600">Public Address</label>
                         <div 
                             className="bg-slate-950 p-3 rounded border border-slate-800 font-mono text-sm text-slate-300 break-all cursor-pointer hover:border-blue-500/50 transition-colors flex justify-between items-start gap-2 print:bg-white print:border-gray-300 print:text-black"
@@ -136,24 +148,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({ wallet, onRese
                             <Copy size={14} className="mt-1 shrink-0 opacity-50 print:hidden" />
                         </div>
                         {copied === `addr-${w.chain}` && <span className="text-xs text-emerald-400 mt-1 block text-right print:hidden">Copied!</span>}
-                    </div>
-
-                    <div className="w-full print:hidden">
-                        <label className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1 block">Private Key</label>
-                        <div className="relative">
-                            <input 
-                                type={showSensitive ? "text" : "password"}
-                                readOnly
-                                value={w.privateKey}
-                                className="w-full bg-slate-950 p-3 rounded border border-slate-800 font-mono text-sm text-red-300 focus:outline-none focus:border-red-500/50"
-                            />
-                            <button 
-                                onClick={() => copyToClipboard(w.privateKey, `pk-${w.chain}`)}
-                                className="absolute right-3 top-3 text-slate-600 hover:text-white"
-                            >
-                                <Copy size={14} />
-                            </button>
-                        </div>
                     </div>
                 </div>
             </div>

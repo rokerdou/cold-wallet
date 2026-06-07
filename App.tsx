@@ -57,19 +57,11 @@ const App: React.FC = () => {
     };
   }, [wallet, stage]);
 
-  // 组件卸载时清除敏感数据
+  // 组件卸载时清除敏感数据引用。JavaScript 无法保证字符串内存被清零。
   useEffect(() => {
     return () => {
-      // 尝试清零内存中的敏感数据（虽然JavaScript不保证内存清零）
       if (wallet) {
-        // 删除对象引用，帮助垃圾回收
         delete (wallet as any).mnemonic;
-        delete (wallet as any).privateKey;
-        if (wallet.wallets) {
-          wallet.wallets.forEach(w => {
-            delete (w as any).privateKey;
-          });
-        }
       }
     };
   }, [wallet]);

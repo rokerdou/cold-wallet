@@ -14,7 +14,7 @@ export class EntropyCollector {
     this.reset();
   }
 
-  public addEvent(e: React.MouseEvent | MouseEvent): number {
+  public addEvent(e: MouseEvent): number {
     if (this.completed) return 100;
 
     const x = e.clientX;

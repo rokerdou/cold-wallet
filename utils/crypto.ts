@@ -1,36 +1,39 @@
 import { ethers } from 'ethers';
-import { utils as TronWebUtils } from 'tronweb';
+import { base58check, bech32 } from '@scure/base';
 
 /**
- * Generates a Tron address from a private key using official TronWeb library.
- * This is more secure and reliable than custom Base58 encoding implementation.
- *
- * @param privateKey - The private key (with or without '0x' prefix)
+ * Generates a Tron address from a private key.
  * @returns Tron address starting with 'T'
  */
 function computeTronAddress(privateKey: string): string {
-  // Remove '0x' prefix if present
-  const cleanPrivateKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+  const publicKey = ethers.SigningKey.computePublicKey(privateKey, false);
+  const publicKeyBytes = ethers.getBytes(publicKey).slice(1);
+  const addressBytes = ethers.getBytes(ethers.keccak256(publicKeyBytes)).slice(-20);
+  const payload = ethers.getBytes(ethers.concat([new Uint8Array([0x41]), addressBytes]));
 
-  try {
-    // Use TronWeb's official address generation from private key
-    const address = TronWebUtils.address.fromPrivateKey(cleanPrivateKey);
-    return address;
-  } catch (error) {
-    console.error('Failed to generate Tron address:', error);
-    throw new Error('Failed to generate Tron address from private key');
-  }
+  return base58check(sha256Bytes).encode(payload);
+}
+
+function computeBitcoinNativeSegwitAddress(privateKey: string): string {
+  const compressedPublicKey = ethers.getBytes(ethers.SigningKey.computePublicKey(privateKey, true));
+  const publicKeyHash = ethers.getBytes(ethers.ripemd160(ethers.getBytes(ethers.sha256(compressedPublicKey))));
+  const words = [0, ...bech32.toWords(publicKeyHash)];
+
+  return bech32.encode('bc', words);
+}
+
+function sha256Bytes(data: Uint8Array): Uint8Array {
+  return ethers.getBytes(ethers.sha256(data));
 }
 
 export interface GeneratedWallet {
   mnemonic: string;
-  privateKey: string; // The master private key
   wallets: {
     chain: string;
-    symbol: string;
+    network: string;
+    assets: string[];
     address: string;
     path: string;
-    privateKey: string; // Derived private key for this chain
   }[];
 }
 
@@ -41,7 +44,7 @@ const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic): GeneratedWa
   // Create Master Node at Root "m"
   const hdNode = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m");
   
-  // 1. Ethereum / BSC / Polygon / Avalanche (Standard EVM)
+  // 1. Ethereum / BSC / Polygon (Standard EVM)
   // Path: m/44'/60'/0'/0/0
   const evmPath = "m/44'/60'/0'/0/0";
   const evmWallet = hdNode.derivePath(evmPath);
@@ -50,40 +53,51 @@ const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic): GeneratedWa
   // Path: m/44'/195'/0'/0/0
   const tronPath = "m/44'/195'/0'/0/0";
   const tronNode = hdNode.derivePath(tronPath);
-  // Use TronWeb's official address generation from private key
   const tronAddress = computeTronAddress(tronNode.privateKey);
+
+  // 3. Bitcoin Native SegWit
+  // Path: m/84'/0'/0'/0/0
+  const bitcoinPath = "m/84'/0'/0'/0/0";
+  const bitcoinNode = hdNode.derivePath(bitcoinPath);
+  const bitcoinAddress = computeBitcoinNativeSegwitAddress(bitcoinNode.privateKey);
 
   return {
     mnemonic: mnemonic.phrase,
-    privateKey: hdNode.privateKey,
     wallets: [
       {
         chain: 'Ethereum',
-        symbol: 'ERC20',
+        network: 'ERC20',
+        assets: ['ETH', 'USDC', 'USDT'],
         address: evmWallet.address,
         path: evmPath,
-        privateKey: evmWallet.privateKey,
       },
       {
         chain: 'BNB Chain',
-        symbol: 'BEP20',
+        network: 'BEP20',
+        assets: ['BNB', 'USDT'],
         address: evmWallet.address, // EVM Compatible
         path: evmPath, // Same derivation as ETH
-        privateKey: evmWallet.privateKey,
       },
       {
         chain: 'Polygon',
-        symbol: 'ERC20',
+        network: 'Polygon PoS',
+        assets: ['POL', 'USDC', 'USDT'],
         address: evmWallet.address, // EVM Compatible
         path: evmPath, // Same derivation as ETH
-        privateKey: evmWallet.privateKey,
       },
       {
         chain: 'Tron',
-        symbol: 'TRC20',
+        network: 'TRC20',
+        assets: ['TRX', 'USDT'],
         address: tronAddress,
         path: tronPath,
-        privateKey: tronNode.privateKey,
+      },
+      {
+        chain: 'Bitcoin',
+        network: 'Native SegWit',
+        assets: ['BTC'],
+        address: bitcoinAddress,
+        path: bitcoinPath,
       }
     ]
   };
