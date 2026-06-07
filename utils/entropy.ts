@@ -6,6 +6,7 @@ const MIN_MOVEMENT_THRESHOLD = 5; // Minimum pixel movement required to register
 export class EntropyCollector {
   private pool: string[] = [];
   private completed = false;
+  private finalizedEntropy: string | null = null;
   private lastX: number | null = null;
   private lastY: number | null = null;
   
@@ -59,6 +60,18 @@ export class EntropyCollector {
   }
 
   public getFinalEntropy(): string {
+    if (this.finalizedEntropy) {
+      return this.finalizedEntropy;
+    }
+
+    if (!this.completed || this.pool.length < ENTROPY_POOL_SIZE) {
+      throw new Error('Entropy collection is incomplete.');
+    }
+
+    if (!window.crypto?.getRandomValues) {
+      throw new Error('A cryptographically secure random number generator is not available in this browser.');
+    }
+
     // Combine mouse data with browser's cryptographically secure random values
     const randomValues = new Uint8Array(32);
     window.crypto.getRandomValues(randomValues);
@@ -70,18 +83,26 @@ export class EntropyCollector {
     const mouseHash = ethers.keccak256(combinedData);
     
     // Combine Hash + Random Values
-    const finalMix = ethers.concat([
+    const finalMix = ethers.getBytes(ethers.concat([
         ethers.getBytes(mouseHash),
         randomValues
-    ]);
+    ]));
 
     // Final Hash to ensure uniform distribution and 32-byte length
-    return ethers.keccak256(finalMix);
+    const finalEntropy = ethers.keccak256(finalMix);
+
+    randomValues.fill(0);
+    finalMix.fill(0);
+    this.pool = [];
+    this.finalizedEntropy = finalEntropy;
+
+    return finalEntropy;
   }
 
   public reset() {
     this.pool = [];
     this.completed = false;
+    this.finalizedEntropy = null;
     this.lastX = null;
     this.lastY = null;
   }

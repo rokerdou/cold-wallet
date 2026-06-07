@@ -11,6 +11,7 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
   const [progress, setProgress] = useState(0);
   // 创建新实例而非使用全局单例，防止数据残留
   const collectorRef = useRef<EntropyCollectorClass>(new EntropyCollectorClass());
+  const hasCompletedRef = useRef(false);
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -28,8 +29,18 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
   }, []);
 
   useEffect(() => {
-    if (progress >= 100) {
-      const finalEntropy = collectorRef.current.getFinalEntropy();
+    if (progress >= 100 && !hasCompletedRef.current) {
+      hasCompletedRef.current = true;
+      let finalEntropy: string;
+
+      try {
+        finalEntropy = collectorRef.current.getFinalEntropy();
+      } catch (error) {
+        hasCompletedRef.current = false;
+        console.error(error);
+        return;
+      }
+
       // Small delay to show 100% before transitioning
       setTimeout(() => {
         onComplete(finalEntropy);
