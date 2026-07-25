@@ -3,7 +3,24 @@ import { ethers } from 'ethers';
 const ENTROPY_POOL_SIZE = 2000; // Total mouse events needed
 const MIN_MOVEMENT_THRESHOLD = 5; // Minimum pixel movement required to register entropy
 
-export class EntropyCollector {
+function assertSecureRandomAvailable() {
+  if (!window.crypto?.getRandomValues) {
+    throw new Error('A cryptographically secure random number generator is not available in this browser.');
+  }
+}
+
+export function generateSystemEntropy(): string {
+  assertSecureRandomAvailable();
+
+  const randomValues = new Uint8Array(32);
+  window.crypto.getRandomValues(randomValues);
+  const entropy = ethers.hexlify(randomValues);
+  randomValues.fill(0);
+
+  return entropy;
+}
+
+export class MouseEntropyCollector {
   private pool: string[] = [];
   private completed = false;
   private finalizedEntropy: string | null = null;
@@ -68,9 +85,7 @@ export class EntropyCollector {
       throw new Error('Entropy collection is incomplete.');
     }
 
-    if (!window.crypto?.getRandomValues) {
-      throw new Error('A cryptographically secure random number generator is not available in this browser.');
-    }
+    assertSecureRandomAvailable();
 
     // Combine mouse data with browser's cryptographically secure random values
     const randomValues = new Uint8Array(32);
