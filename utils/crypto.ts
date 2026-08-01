@@ -28,6 +28,7 @@ function sha256Bytes(data: Uint8Array): Uint8Array {
 
 export interface GeneratedWallet {
   mnemonic: string;
+  hasPassphrase: boolean;
   wallets: {
     chain: string;
     network: string;
@@ -40,7 +41,7 @@ export interface GeneratedWallet {
 /**
  * Internal helper to derive wallets from a Mnemonic object
  */
-const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic): GeneratedWallet => {
+const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic, hasPassphrase: boolean): GeneratedWallet => {
   // Create Master Node at Root "m"
   const hdNode = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m");
   
@@ -63,6 +64,7 @@ const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic): GeneratedWa
 
   return {
     mnemonic: mnemonic.phrase,
+    hasPassphrase,
     wallets: [
       {
         chain: 'Ethereum',
@@ -106,15 +108,15 @@ const deriveWalletsFromMnemonicObject = (mnemonic: ethers.Mnemonic): GeneratedWa
 /**
  * Generate wallet from collected entropy
  */
-export const generateWalletFromEntropy = (entropyHex: string): GeneratedWallet => {
-  const mnemonic = ethers.Mnemonic.fromEntropy(ethers.getBytes(entropyHex));
-  return deriveWalletsFromMnemonicObject(mnemonic);
+export const generateWalletFromEntropy = (entropyHex: string, passphrase = ''): GeneratedWallet => {
+  const mnemonic = ethers.Mnemonic.fromEntropy(ethers.getBytes(entropyHex), passphrase);
+  return deriveWalletsFromMnemonicObject(mnemonic, passphrase.length > 0);
 };
 
 /**
  * Restore wallet from an existing mnemonic phrase
  */
-export const generateWalletFromMnemonic = (phrase: string): GeneratedWallet => {
-  const mnemonic = ethers.Mnemonic.fromPhrase(phrase);
-  return deriveWalletsFromMnemonicObject(mnemonic);
+export const generateWalletFromMnemonic = (phrase: string, passphrase = ''): GeneratedWallet => {
+  const mnemonic = ethers.Mnemonic.fromPhrase(phrase, passphrase);
+  return deriveWalletsFromMnemonicObject(mnemonic, passphrase.length > 0);
 };

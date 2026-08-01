@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MouseEntropyCollector, generateSystemEntropy } from '../utils/entropy';
-import { Cpu, Download, Lock, MousePointer2, ShieldCheck } from 'lucide-react';
+import { Cpu, Download, Eye, EyeOff, KeyRound, Lock, MousePointer2, ShieldCheck } from 'lucide-react';
 
 interface EntropyCollectorProps {
-  onComplete: (entropyHex: string) => void;
+  onComplete: (entropyHex: string, passphrase?: string) => void;
   onRequestImport: () => void;
 }
 
 export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, onRequestImport }) => {
   const [progress, setProgress] = useState(0);
   const [useMouseEntropy, setUseMouseEntropy] = useState(false);
+  const [usePassphrase, setUsePassphrase] = useState(false);
+  const [passphrase, setPassphrase] = useState('');
+  const [passphraseConfirm, setPassphraseConfirm] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 创建新实例而非使用全局单例，防止数据残留
   const collectorRef = useRef<MouseEntropyCollector>(new MouseEntropyCollector());
@@ -36,29 +40,44 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
     if (useMouseEntropy && progress >= 100 && !hasCompletedRef.current) {
       hasCompletedRef.current = true;
       let finalEntropy: string;
+      let confirmedPassphrase: string;
 
       try {
         finalEntropy = collectorRef.current.getFinalEntropy();
+        confirmedPassphrase = getConfirmedPassphrase();
       } catch (error) {
         hasCompletedRef.current = false;
-        console.error(error);
+        setError(error instanceof Error ? error.message : 'Failed to generate secure entropy.');
         return;
       }
 
       // Small delay to show 100% before transitioning
       setTimeout(() => {
-        onComplete(finalEntropy);
+        onComplete(finalEntropy, confirmedPassphrase);
       }, 500);
     }
-  }, [progress, onComplete, useMouseEntropy]);
+  }, [progress, onComplete, useMouseEntropy, usePassphrase, passphrase, passphraseConfirm]);
+
+  const getConfirmedPassphrase = () => {
+    if (!usePassphrase) return '';
+    if (passphrase.length === 0) {
+      throw new Error('Enter a BIP-39 passphrase or turn off hidden wallet mode.');
+    }
+    if (passphrase !== passphraseConfirm) {
+      throw new Error('Passphrase confirmation does not match.');
+    }
+
+    return passphrase;
+  };
 
   const generateWithSystemEntropy = () => {
     if (hasCompletedRef.current) return;
 
     try {
+      const confirmedPassphrase = getConfirmedPassphrase();
       hasCompletedRef.current = true;
       setError(null);
-      onComplete(generateSystemEntropy());
+      onComplete(generateSystemEntropy(), confirmedPassphrase);
     } catch (err) {
       hasCompletedRef.current = false;
       setError(err instanceof Error ? err.message : 'Failed to generate secure entropy.');
@@ -79,6 +98,18 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
     hasCompletedRef.current = false;
     collectorRef.current.reset();
     setUseMouseEntropy(false);
+  };
+
+  const togglePassphrase = () => {
+    setError(null);
+    setUsePassphrase((enabled) => {
+      if (enabled) {
+        setPassphrase('');
+        setPassphraseConfirm('');
+        setShowPassphrase(false);
+      }
+      return !enabled;
+    });
   };
 
   return (
@@ -109,6 +140,53 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
               ? "Move your mouse randomly anywhere on the screen to add optional physical entropy."
               : "Generate a 256-bit BIP-39 seed phrase using the browser's cryptographically secure random source."}
         </p>
+
+        <div className="mx-auto mb-8 max-w-xl rounded-lg border border-slate-700 bg-slate-900/50 p-4 text-left">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={usePassphrase}
+              onChange={togglePassphrase}
+              className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="flex items-center gap-2 font-semibold text-slate-200">
+                <KeyRound size={16} className="text-blue-400" /> Hidden wallet passphrase
+              </span>
+              <span className="mt-1 block text-sm text-slate-500">
+                BIP-39 compatible. Same phrase plus same passphrase restores the hidden wallet.
+              </span>
+            </span>
+          </label>
+
+          {usePassphrase && (
+            <div className="mt-4 space-y-3">
+              <div className="relative">
+                <input
+                  type={showPassphrase ? 'text' : 'password'}
+                  value={passphrase}
+                  onChange={(event) => setPassphrase(event.target.value)}
+                  placeholder="BIP-39 passphrase"
+                  className="w-full rounded border border-slate-700 bg-slate-950 p-3 pr-11 font-mono text-sm text-slate-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassphrase((visible) => !visible)}
+                  className="absolute right-3 top-3 text-slate-500 hover:text-white"
+                >
+                  {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <input
+                type={showPassphrase ? 'text' : 'password'}
+                value={passphraseConfirm}
+                onChange={(event) => setPassphraseConfirm(event.target.value)}
+                placeholder="Confirm passphrase"
+                className="w-full rounded border border-slate-700 bg-slate-950 p-3 font-mono text-sm text-slate-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          )}
+        </div>
 
         {/* Large Progress Bar */}
         {useMouseEntropy && (

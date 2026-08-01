@@ -66,9 +66,9 @@ const App: React.FC = () => {
     };
   }, [wallet]);
 
-  const handleEntropyComplete = (entropyHex: string) => {
+  const handleEntropyComplete = (entropyHex: string, passphrase = '') => {
     // Generate the wallet
-    const generated = generateWalletFromEntropy(entropyHex);
+    const generated = generateWalletFromEntropy(entropyHex, passphrase);
     setWallet(generated);
     setStage('generated');
   };

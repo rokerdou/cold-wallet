@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { generateWalletFromMnemonic, GeneratedWallet } from '../utils/crypto';
-import { KeyRound, ArrowLeft, AlertCircle } from 'lucide-react';
+import { KeyRound, ArrowLeft, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface ImportWalletProps {
   onImport: (wallet: GeneratedWallet) => void;
@@ -9,6 +9,8 @@ interface ImportWalletProps {
 
 export const ImportWallet: React.FC<ImportWalletProps> = ({ onImport, onBack }) => {
   const [phrase, setPhrase] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleImport = () => {
@@ -20,7 +22,7 @@ export const ImportWallet: React.FC<ImportWalletProps> = ({ onImport, onBack }) 
       }
       
       // Attempt to generate. Ethers will throw if checksum or wordlist is invalid.
-      const wallet = generateWalletFromMnemonic(trimmedPhrase);
+      const wallet = generateWalletFromMnemonic(trimmedPhrase, passphrase);
       onImport(wallet);
     } catch (err: any) {
       console.error(err);
@@ -58,6 +60,30 @@ export const ImportWallet: React.FC<ImportWalletProps> = ({ onImport, onBack }) 
                 placeholder="apple banana cat dog..."
                 className="w-full h-32 bg-slate-950 border border-slate-700 rounded-xl p-4 text-slate-200 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none"
             />
+            <div className="mt-4">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    BIP-39 Passphrase
+                </label>
+                <div className="relative">
+                    <input
+                        type={showPassphrase ? 'text' : 'password'}
+                        value={passphrase}
+                        onChange={(e) => setPassphrase(e.target.value)}
+                        placeholder="Optional hidden wallet passphrase"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 p-4 pr-12 font-mono text-slate-200 transition-all focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassphrase((visible) => !visible)}
+                        className="absolute right-4 top-4 text-slate-500 hover:text-white"
+                    >
+                        {showPassphrase ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                    Leave empty for the standard wallet. Use the exact same passphrase for a hidden wallet.
+                </p>
+            </div>
             {error && (
                 <div className="mt-3 text-red-400 text-sm flex items-center gap-2 bg-red-900/10 p-2 rounded border border-red-900/20">
                     <AlertCircle size={16} />
