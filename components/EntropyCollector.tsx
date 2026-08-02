@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  COIN_MIN_FLIPS,
+  COIN_RECOMMENDED_FLIPS,
   DICE_MIN_ROLLS,
   DICE_RECOMMENDED_ROLLS,
   MouseEntropyCollector,
+  canonicalizeCoinFlipsInput,
+  estimateCoinEntropyBits,
   estimateDiceEntropyBits,
+  generateCoinMixedEntropy,
   generateDiceMixedEntropy,
   generateSystemEntropy,
+  hasWeakCoinPattern,
   hasWeakDicePattern,
 } from '../utils/entropy';
-import { Cpu, Dice5, Download, Eye, EyeOff, KeyRound, Lock, MousePointer2, ShieldCheck } from 'lucide-react';
+import { Coins, Cpu, Dice5, Download, Eye, EyeOff, KeyRound, Lock, MousePointer2, ShieldCheck } from 'lucide-react';
 
 interface EntropyCollectorProps {
   onComplete: (entropyHex: string, passphrase?: string) => void;
@@ -17,8 +23,9 @@ interface EntropyCollectorProps {
 
 export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, onRequestImport }) => {
   const [progress, setProgress] = useState(0);
-  const [entropyMode, setEntropyMode] = useState<'system' | 'mouse' | 'dice'>('system');
+  const [entropyMode, setEntropyMode] = useState<'system' | 'mouse' | 'dice' | 'coin'>('system');
   const [diceRolls, setDiceRolls] = useState('');
+  const [coinFlips, setCoinFlips] = useState('');
   const [usePassphrase, setUsePassphrase] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [passphraseConfirm, setPassphraseConfirm] = useState('');
@@ -38,6 +45,17 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
       hasWeakPattern: hasWeakDicePattern(rolls),
     };
   }, [diceRolls]);
+  const coinStats = useMemo(() => {
+    const flips = canonicalizeCoinFlipsInput(coinFlips);
+    const validCount = /^[HT]*$/.test(flips) ? flips.length : 0;
+
+    return {
+      count: validCount,
+      bits: estimateCoinEntropyBits(validCount),
+      hasInvalidCharacters: flips.length > 0 && /[^HT]/.test(flips),
+      hasWeakPattern: hasWeakCoinPattern(flips),
+    };
+  }, [coinFlips]);
 
   useEffect(() => {
     if (entropyMode !== 'mouse') return;
@@ -120,6 +138,22 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
     }
   };
 
+  const generateWithCoinEntropy = () => {
+    if (hasCompletedRef.current) return;
+
+    try {
+      const confirmedPassphrase = getConfirmedPassphrase();
+      const entropy = generateCoinMixedEntropy(coinFlips);
+      hasCompletedRef.current = true;
+      setError(null);
+      setCoinFlips('');
+      onComplete(entropy, confirmedPassphrase);
+    } catch (err) {
+      hasCompletedRef.current = false;
+      setError(err instanceof Error ? err.message : 'Failed to generate secure entropy.');
+    }
+  };
+
   const enableMouseEntropy = () => {
     setError(null);
     setProgress(0);
@@ -142,6 +176,14 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
     hasCompletedRef.current = false;
     collectorRef.current.reset();
     setEntropyMode('dice');
+  };
+
+  const enableCoinEntropy = () => {
+    setError(null);
+    setProgress(0);
+    hasCompletedRef.current = false;
+    collectorRef.current.reset();
+    setEntropyMode('coin');
   };
 
   const togglePassphrase = () => {
@@ -170,7 +212,7 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
                 p-4 rounded-full border shadow-[0_0_30px_rgba(16,185,129,0.2)] transition-all duration-500
                 ${progress >= 100 ? 'bg-emerald-500 text-white border-emerald-400 scale-110' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}
             `}>
-                {progress >= 100 ? <Lock className="w-16 h-16" /> : entropyMode === 'mouse' ? <MousePointer2 className="w-16 h-16" /> : entropyMode === 'dice' ? <Dice5 className="w-16 h-16" /> : <ShieldCheck className="w-16 h-16" />}
+                {progress >= 100 ? <Lock className="w-16 h-16" /> : entropyMode === 'mouse' ? <MousePointer2 className="w-16 h-16" /> : entropyMode === 'dice' ? <Dice5 className="w-16 h-16" /> : entropyMode === 'coin' ? <Coins className="w-16 h-16" /> : <ShieldCheck className="w-16 h-16" />}
             </div>
         </div>
         
@@ -184,6 +226,8 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
               ? "Move your mouse randomly anywhere on the screen to add optional physical entropy."
               : entropyMode === 'dice'
                 ? "Enter real dice rolls, then mix them with the browser's cryptographically secure random source."
+                : entropyMode === 'coin'
+                  ? "Enter coin flips, then mix them with the browser's cryptographically secure random source."
               : "Generate a 256-bit BIP-39 seed phrase using the browser's cryptographically secure random source."}
         </p>
 
@@ -287,6 +331,40 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
           </div>
         )}
 
+        {entropyMode === 'coin' && (
+          <div className="mx-auto mb-8 max-w-xl rounded-lg border border-slate-700 bg-slate-900/50 p-4 text-left">
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Coin Flips
+            </label>
+            <textarea
+              value={coinFlips}
+              onChange={(event) => setCoinFlips(event.target.value)}
+              placeholder="Example: H T T H, 0110, or 正反反正"
+              spellCheck={false}
+              className="h-28 w-full resize-none rounded border border-slate-700 bg-slate-950 p-3 font-mono text-sm text-slate-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <div className="mt-3 flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+              <span className={coinStats.hasInvalidCharacters ? 'text-red-300' : 'text-slate-500'}>
+                {coinStats.hasInvalidCharacters
+                  ? 'Only H/T, 0/1, or 正/反 are accepted.'
+                  : coinStats.hasWeakPattern
+                    ? `${coinStats.count} flips, weak coin pattern detected`
+                    : `${coinStats.count} flips, up to ${coinStats.bits.toFixed(0)} fair-coin bits`}
+              </span>
+              <span>Minimum {COIN_MIN_FLIPS}; recommended {COIN_RECOMMENDED_FLIPS}</span>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
+              System CSPRNG is always mixed in as the primary 256-bit source, so weak coin flips cannot lower wallet security.
+            </p>
+            <button
+              onClick={generateWithCoinEntropy}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-colors hover:bg-emerald-500"
+            >
+              <Coins size={16} /> Generate with Coin + System Random
+            </button>
+          </div>
+        )}
+
         {entropyMode === 'system' && (
           <div className="mb-8 flex flex-col items-center gap-4">
             <button
@@ -331,6 +409,12 @@ export const EntropyCollector: React.FC<EntropyCollectorProps> = ({ onComplete, 
                   className="text-slate-500 hover:text-blue-400 text-sm flex items-center gap-2 mx-auto transition-colors border-b border-transparent hover:border-blue-400/50 pb-0.5"
                 >
                   <Dice5 size={14} /> Add dice entropy
+                </button>
+                <button
+                  onClick={enableCoinEntropy}
+                  className="text-slate-500 hover:text-blue-400 text-sm flex items-center gap-2 mx-auto transition-colors border-b border-transparent hover:border-blue-400/50 pb-0.5"
+                >
+                  <Coins size={14} /> Add coin-flip entropy
                 </button>
                 <button
                   onClick={enableMouseEntropy}
