@@ -1,36 +1,53 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { bech32, base58check } from '@scure/base';
+import { HDKey } from '@scure/bip32';
+import { entropyToMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
+import { wordlist } from '@scure/bip39/wordlists/english.js';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { hexToBytes } from '@noble/hashes/utils.js';
+import { ripemd160 } from '@noble/hashes/legacy.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 import ts from 'typescript';
 
 const projectRoot = process.cwd();
 const cryptoSourcePath = path.join(projectRoot, 'utils', 'crypto.ts');
 const cacheDir = path.join(projectRoot, 'node_modules', '.cache', 'omnivault-vector-test');
 const compiledPath = path.join(cacheDir, 'crypto-under-test.mjs');
+const textEncoder = new TextEncoder();
 
-const source = await readFile(cryptoSourcePath, 'utf8');
-const compiled = ts.transpileModule(source, {
-  fileName: cryptoSourcePath,
-  compilerOptions: {
-    module: ts.ModuleKind.ES2022,
-    target: ts.ScriptTarget.ES2022,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    esModuleInterop: true,
-    strict: true,
+const chainSpecs = {
+  Ethereum: {
+    path: "m/44'/60'/0'/0/0",
+    assets: ['ETH', 'USDC', 'USDT'],
+    addressFromPrivateKey: evmAddressFromPrivateKey,
   },
-});
+  'BNB Chain': {
+    path: "m/44'/60'/0'/0/0",
+    assets: ['BNB', 'USDT'],
+    addressFromPrivateKey: evmAddressFromPrivateKey,
+  },
+  Polygon: {
+    path: "m/44'/60'/0'/0/0",
+    assets: ['POL', 'USDC', 'USDT'],
+    addressFromPrivateKey: evmAddressFromPrivateKey,
+  },
+  Tron: {
+    path: "m/44'/195'/0'/0/0",
+    assets: ['TRX', 'USDT'],
+    addressFromPrivateKey: tronAddressFromPrivateKey,
+  },
+  Bitcoin: {
+    path: "m/84'/0'/0'/0/0",
+    assets: ['BTC'],
+    addressFromPrivateKey: bitcoinNativeSegwitAddressFromPrivateKey,
+  },
+};
 
-await mkdir(cacheDir, { recursive: true });
-await writeFile(compiledPath, compiled.outputText, 'utf8');
-
-const cryptoModule = await import(`${pathToFileURL(compiledPath).href}?cacheBust=${Date.now()}`);
-const { generateWalletFromEntropy, generateWalletFromMnemonic } = cryptoModule;
-
-if (typeof generateWalletFromEntropy !== 'function' || typeof generateWalletFromMnemonic !== 'function') {
-  throw new Error('Could not load wallet generation functions from utils/crypto.ts');
-}
-
-const vectors = [
+const knownVectors = [
   {
     name: 'BIP-39 128-bit zero entropy vector',
     type: 'entropy',
@@ -88,21 +105,125 @@ const vectors = [
   },
 ];
 
-const expectedPaths = {
-  Ethereum: "m/44'/60'/0'/0/0",
-  'BNB Chain': "m/44'/60'/0'/0/0",
-  Polygon: "m/44'/60'/0'/0/0",
-  Tron: "m/44'/195'/0'/0/0",
-  Bitcoin: "m/84'/0'/0'/0/0",
-};
+function bytesToHex(bytes) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
-const expectedAssets = {
-  Ethereum: ['ETH', 'USDC', 'USDT'],
-  'BNB Chain': ['BNB', 'USDT'],
-  Polygon: ['POL', 'USDC', 'USDT'],
-  Tron: ['TRX', 'USDT'],
-  Bitcoin: ['BTC'],
-};
+function stripHexPrefix(value) {
+  return value.startsWith('0x') ? value.slice(2) : value;
+}
+
+function hexToBytesStrict(value) {
+  const hex = stripHexPrefix(value);
+  if (!/^[0-9a-f]*$/i.test(hex) || hex.length % 2 !== 0) {
+    throw new Error(`Invalid hex value: ${value}`);
+  }
+
+  return hexToBytes(hex);
+}
+
+function sha256Bytes(data) {
+  return sha256(data);
+}
+
+function eip55ChecksumAddress(addressBytes) {
+  const lower = bytesToHex(addressBytes);
+  const hash = bytesToHex(keccak_256(textEncoder.encode(lower)));
+  let checksummed = '0x';
+
+  for (let index = 0; index < lower.length; index += 1) {
+    const character = lower[index];
+    checksummed += Number.parseInt(hash[index], 16) >= 8 ? character.toUpperCase() : character;
+  }
+
+  return checksummed;
+}
+
+function uncompressedPublicKeyFromPrivateKey(privateKey) {
+  return secp256k1.getPublicKey(privateKey, false).slice(1);
+}
+
+function evmAddressFromPrivateKey(privateKey) {
+  const publicKey = uncompressedPublicKeyFromPrivateKey(privateKey);
+  const addressBytes = keccak_256(publicKey).slice(-20);
+
+  return eip55ChecksumAddress(addressBytes);
+}
+
+function tronAddressFromPrivateKey(privateKey) {
+  const publicKey = uncompressedPublicKeyFromPrivateKey(privateKey);
+  const addressBytes = keccak_256(publicKey).slice(-20);
+  const payload = new Uint8Array(21);
+  payload[0] = 0x41;
+  payload.set(addressBytes, 1);
+
+  return base58check(sha256Bytes).encode(payload);
+}
+
+function bitcoinNativeSegwitAddressFromPrivateKey(privateKey) {
+  const publicKey = secp256k1.getPublicKey(privateKey, true);
+  const publicKeyHash = ripemd160(sha256(publicKey));
+
+  return bech32.encode('bc', [0, ...bech32.toWords(publicKeyHash)]);
+}
+
+function deriveOracleWallet(mnemonic, passphrase = '') {
+  if (!validateMnemonic(mnemonic, wordlist)) {
+    throw new Error(`Oracle rejected invalid mnemonic: ${mnemonic}`);
+  }
+
+  const seed = mnemonicToSeedSync(mnemonic, passphrase);
+  const root = HDKey.fromMasterSeed(seed);
+  const result = {};
+
+  for (const [chain, spec] of Object.entries(chainSpecs)) {
+    const child = root.derive(spec.path);
+    if (!child.privateKey) {
+      throw new Error(`Oracle could not derive private key for ${chain}`);
+    }
+
+    result[chain] = {
+      address: spec.addressFromPrivateKey(child.privateKey),
+      path: spec.path,
+      assets: spec.assets,
+      privateKeyHex: `0x${bytesToHex(child.privateKey)}`,
+    };
+  }
+
+  return result;
+}
+
+function deterministicEntropy(label, byteLength) {
+  const entropy = createHash('sha256').update(label).digest().subarray(0, byteLength);
+
+  return `0x${entropy.toString('hex')}`;
+}
+
+function dynamicVectors() {
+  const entropyByteLengths = [16, 20, 24, 28, 32];
+  const passphrases = ['', 'TREZOR', 'correct horse battery staple'];
+  const vectors = [];
+
+  for (const byteLength of entropyByteLengths) {
+    for (const passphrase of passphrases) {
+      const label = `omnivault-dynamic-${byteLength}-${passphrase || 'empty-passphrase'}`;
+      const entropy = deterministicEntropy(label, byteLength);
+      const mnemonic = entropyToMnemonic(hexToBytesStrict(entropy), wordlist);
+
+      vectors.push({
+        name: `dynamic ${byteLength * 8}-bit entropy${passphrase ? ' with passphrase' : ''}`,
+        type: 'entropy',
+        entropy,
+        mnemonic,
+        passphrase,
+        hasPassphrase: passphrase.length > 0,
+        addresses: deriveOracleWallet(mnemonic, passphrase),
+      });
+    }
+  }
+
+  return vectors;
+}
 
 function assertEqual(actual, expected, context) {
   if (actual !== expected) {
@@ -123,22 +244,66 @@ function walletByChain(wallet, chain) {
   return chainWallet;
 }
 
-for (const vector of vectors) {
+async function loadProductionCryptoModule() {
+  const source = await readFile(cryptoSourcePath, 'utf8');
+  const compiled = ts.transpileModule(source, {
+    fileName: cryptoSourcePath,
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      esModuleInterop: true,
+      strict: true,
+    },
+  });
+
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(compiledPath, compiled.outputText, 'utf8');
+
+  return import(`${pathToFileURL(compiledPath).href}?cacheBust=${Date.now()}`);
+}
+
+const cryptoModule = await loadProductionCryptoModule();
+const { generateWalletFromEntropy, generateWalletFromMnemonic } = cryptoModule;
+
+if (typeof generateWalletFromEntropy !== 'function' || typeof generateWalletFromMnemonic !== 'function') {
+  throw new Error('Could not load wallet generation functions from utils/crypto.ts');
+}
+
+const allVectors = [
+  ...knownVectors,
+  ...dynamicVectors(),
+];
+
+let addressAssertions = 0;
+
+for (const vector of allVectors) {
   const wallet = vector.type === 'entropy'
     ? generateWalletFromEntropy(vector.entropy, vector.passphrase ?? '')
     : generateWalletFromMnemonic(vector.mnemonic, vector.passphrase ?? '');
+  const expectedAddresses = vector.addresses ?? deriveOracleWallet(vector.mnemonic, vector.passphrase ?? '');
 
   assertEqual(wallet.mnemonic, vector.mnemonic, `${vector.name}: mnemonic`);
   assertEqual(wallet.hasPassphrase, vector.hasPassphrase, `${vector.name}: passphrase flag`);
-  assertEqual(wallet.wallets.length, Object.keys(vector.addresses).length, `${vector.name}: wallet count`);
+  assertEqual(wallet.wallets.length, Object.keys(chainSpecs).length, `${vector.name}: wallet count`);
 
-  for (const [chain, expectedAddress] of Object.entries(vector.addresses)) {
+  for (const chain of Object.keys(chainSpecs)) {
     const derived = walletByChain(wallet, chain);
+    const expected = typeof expectedAddresses[chain] === 'string'
+      ? {
+        address: expectedAddresses[chain],
+        path: chainSpecs[chain].path,
+        assets: chainSpecs[chain].assets,
+      }
+      : expectedAddresses[chain];
 
-    assertEqual(derived.address, expectedAddress, `${vector.name}: ${chain} address`);
-    assertEqual(derived.path, expectedPaths[chain], `${vector.name}: ${chain} derivation path`);
-    assertArrayEqual(derived.assets, expectedAssets[chain], `${vector.name}: ${chain} assets`);
+    assertEqual(derived.address, expected.address, `${vector.name}: ${chain} address`);
+    assertEqual(derived.path, expected.path, `${vector.name}: ${chain} derivation path`);
+    assertArrayEqual(derived.assets, expected.assets, `${vector.name}: ${chain} assets`);
+    addressAssertions += 1;
   }
 }
 
-console.log(`Verified ${vectors.length} wallet mapping vectors across ${Object.keys(expectedPaths).length} chains.`);
+console.log(
+  `Verified ${allVectors.length} wallet mapping vectors and ${addressAssertions} chain addresses using independent scure/noble derivation.`,
+);

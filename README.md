@@ -144,7 +144,7 @@ rg -n "<script[^>]+src=|<link[^>]+href=|fetch\\(|XMLHttpRequest|WebSocket|sendBe
 
 正常情况下这条扫描不应输出结果。
 
-`pnpm run test:vectors` 会使用固定 BIP-39/HD 钱包测试向量校验助记词、BIP-39 passphrase、派生路径、ETH/EVM、Tron 和 BTC Native SegWit 地址映射。任何地址、路径或资产列表不匹配都会让命令失败，避免助记词与钱包地址映射错误被带入发布版本。
+`pnpm run test:vectors` 会校验助记词、BIP-39 passphrase、派生路径、ETH/EVM、Tron 和 BTC Native SegWit 地址映射。门禁包含固定公开向量，以及由 `@scure/bip39`、`@scure/bip32`、`@noble/curves`、`@noble/hashes` 独立推导的动态向量；测试会从助记词推导私钥、公钥和地址，再与生产代码输出比较。任何地址、路径或资产列表不匹配都会让命令失败，避免助记词与钱包地址映射错误被带入发布版本。
 
 ## 已知边界
 
